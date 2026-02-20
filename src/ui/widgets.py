@@ -77,16 +77,6 @@ def draw_card(surface: pygame.Surface, rect: pygame.Rect, label: str, ui=None) -
     font = _get_bold_font(font_px)
     pad = max(6, int(rect.w * 0.08))
 
-    # Bigger center "pip" (optional but makes the card feel less empty)
-    pip_px = max(18, int(rect.w * 0.55))
-    pip = None
-    if ui is not None and hasattr(ui, "get_suit_icon"):
-        pip = ui.get_suit_icon(suit, pip_px)
-    if pip is not None:
-        pip_img = pip.copy()
-        pip_img.set_alpha(70)  # subtle
-        surface.blit(pip_img, pip_img.get_rect(center=rect.center))
-
     # Corner label surface (top-left + bottom-right rotated)
     gap = max(2, pad // 3)
 
@@ -113,3 +103,87 @@ def draw_card(surface: pygame.Surface, rect: pygame.Rect, label: str, ui=None) -
     # Bottom-right (rotated 180°, like real cards)
     corner_rot = pygame.transform.rotate(corner, 180)
     surface.blit(corner_rot, (rect.right - pad - corner_w, rect.bottom - pad - corner_h))
+    
+    # --- Center art / pips ---
+    inner = rect.inflate(-pad * 2, -pad * 2)
+    reserve = corner_h + max(2, pad // 2)
+    pip_area = pygame.Rect(inner.x, inner.y + reserve, inner.w, max(1, inner.h - (reserve * 2)))
+
+    # Face cards: center art (King.png / Queen.png / Jack.png)
+    if rank in ("J", "Q", "K"):
+        face = None
+        if ui is not None and hasattr(ui, "get_face_art"):
+            face = ui.get_face_art(rank, int(inner.w * 0.8), int(inner.h * 0.8))
+        if face is not None:
+            surface.blit(face, face.get_rect(center=rect.center))
+        else:
+            # Fallback if art is missing
+            big_font = _get_bold_font(max(18, int(rect.h * 0.42)))
+            draw_text_center(surface, rank, big_font, text_color, rect.center)
+        return
+
+    # Ace: single suit icon in the center
+    if rank == "A":
+        ace_px = max(22, int(rect.w * 0.62))
+        ace = None
+        if ui is not None and hasattr(ui, "get_suit_icon"):
+            ace = ui.get_suit_icon(suit, ace_px)
+        if ace is None:
+            ace = font.render(suit, True, text_color)
+        surface.blit(ace, ace.get_rect(center=rect.center))
+        return
+
+    # Number cards (2-10): pip layouts
+    def _pip_layout(n: int) -> list[tuple[float, float]]:
+        l, c, r = 0.28, 0.50, 0.72
+        y1, y2, y3, y4, y5 = 0.08, 0.30, 0.50, 0.70, 0.92
+        yA, yB, yC, yD, yE, yF = 0.05, 0.23, 0.41, 0.59, 0.77, 0.95
+
+        if n == 2:
+            return [(c, y1), (c, y5)]
+        if n == 3:
+            return [(c, y1), (c, y3), (c, y5)]
+        if n == 4:
+            return [(l, y1), (r, y1), (l, y5), (r, y5)]
+        if n == 5:
+            return [(l, y1), (r, y1), (c, y3), (l, y5), (r, y5)]
+        if n == 6:
+            return [(l, y1), (r, y1), (l, y3), (r, y3), (l, y5), (r, y5)]
+        if n == 7:
+            return [(l, y1), (r, y1), (c, y2), (l, y3), (r, y3), (l, y5), (r, y5)]
+        if n == 8:
+            return [(l, y1), (r, y1), (c, y2), (l, y3), (r, y3), (c, y4), (l, y5), (r, y5)]
+        if n == 9:
+            return [(l, y1), (r, y1), (c, y2), (l, y3), (c, y3), (r, y3), (c, y4), (l, y5), (r, y5)]
+        if n == 10:
+            return [(l, yA), (r, yA), (l, yB), (r, yB), (c, yC), (c, yD), (l, yE), (r, yE), (l, yF), (r, yF)]
+        return []
+
+    # Convert rank to a pip count
+    count = 0
+    if rank == "T":
+        count = 10
+    else:
+        try:
+            count = int(rank)
+        except ValueError:
+            count = 0
+
+    if 2 <= count <= 10:
+        if count <= 3:
+            pip_px = max(14, int(rect.w * 0.24))
+        elif count <= 6:
+            pip_px = max(14, int(rect.w * 0.21))
+        else:
+            pip_px = max(14, int(rect.w * 0.18))
+
+        pip_img = None
+        if ui is not None and hasattr(ui, "get_suit_icon"):
+            pip_img = ui.get_suit_icon(suit, pip_px)
+        if pip_img is None:
+            pip_img = font.render(suit, True, text_color)
+
+        for (xp, yp) in _pip_layout(count):
+            cx = pip_area.x + int(pip_area.w * xp)
+            cy = pip_area.y + int(pip_area.h * yp)
+            surface.blit(pip_img, pip_img.get_rect(center=(cx, cy)))
