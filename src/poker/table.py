@@ -20,7 +20,6 @@ class PokerTable:
     def __init__(self) -> None:
         self.rules = TexasHoldemRules()
         self.blinds = default_blind_structure(small_blind=10, big_blind=20, hands_per_level=5)
-
         self.deck = Deck()
 
         self.players: List[Player] = [
@@ -57,6 +56,7 @@ class PokerTable:
 
         # Optional: helpful for UI/debug
         self.last_action_text: str = ""
+        self.last_actions: Dict[int, str] = {}  # seat_index -> short action string for UI
 
         self._rng = random.Random()
 
@@ -110,6 +110,7 @@ class PokerTable:
         self.pending_to_act.clear()
         self._ai_timer = 0.0
         self.last_action_text = ""
+        self.last_actions.clear()
 
     # ---------- Position helpers ----------
 
@@ -206,7 +207,7 @@ class PokerTable:
         if action == Action.FOLD:
             self.players[seat_index].folded = True
             self.last_action_text = f"{self.players[seat_index].name} folds"
-
+            self.last_actions[seat_index] = "Folded"
             # folded player no longer pending
             self.pending_to_act.discard(seat_index)
 
@@ -224,8 +225,10 @@ class PokerTable:
                 # CHECK becomes CALL when facing a bet
                 paid = bet_to(prev_bet + call_amt)
                 self.last_action_text = f"{self.players[seat_index].name} calls {paid}"
+                self.last_actions[seat_index] = f"Called {paid}"
             else:
                 self.last_action_text = f"{self.players[seat_index].name} checks"
+                self.last_actions[seat_index] = "Checked"
 
             self.pending_to_act.discard(seat_index)
             self._advance_turn(from_seat=seat_index)
@@ -243,7 +246,14 @@ class PokerTable:
             target = min(target, max_total)
 
             paid = bet_to(target)
-            self.last_action_text = f"{self.players[seat_index].name} raises to {self.current_bets.get(seat_index, 0)} (+{paid})"
+            new_total = self.current_bets.get(seat_index, 0)
+
+            if action == Action.BET:
+                self.last_action_text = f"{self.players[seat_index].name} bets {paid}"
+                self.last_actions[seat_index] = f"Bet {paid}"
+            else:
+                self.last_action_text = f"{self.players[seat_index].name} raises to {new_total} (+{paid})"
+                self.last_actions[seat_index] = f"Raised +{paid} (to {new_total})"
 
             # If this didn't increase the table bet (e.g., all-in short), treat it like a call
             if self.current_bets.get(seat_index, 0) <= self.current_bet_amount and paid <= call_amt:

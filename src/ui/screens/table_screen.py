@@ -181,7 +181,8 @@ class TableScreen(Screen):
         seat_positions = self._seat_positions(table_rect, len(self.table.players), y_top, y_bottom)
         for seat_idx, (cx, cy) in enumerate(seat_positions):
             p = self.table.players[seat_idx]
-            self._draw_player_panel(surface, seat_idx, p.name, p.chips, p.folded, cx, cy, panel_w, panel_h)
+            status = self._seat_status_text(seat_idx)
+            self._draw_player_panel(surface, seat_idx, p.name, p.chips, p.folded, status, cx, cy, panel_w, panel_h)
 
         # --- Hole cards (seat 0) ---
         you = self.table.players[0]
@@ -210,7 +211,7 @@ class TableScreen(Screen):
             draw_text(surface, self.table.debug_string(), self.ui.font_small, (245, 245, 245),
                     (dbg.x + pad, dbg.y + pad))
 
-    def _draw_player_panel(self, surface: pygame.Surface, seat: int, name: str, chips: int, folded: bool, cx: int, cy: int, panel_w: int, panel_h: int) -> None:
+    def _draw_player_panel(self, surface: pygame.Surface, seat: int, name: str, chips: int, folded: bool, status: str, cx: int, cy: int, panel_w: int, panel_h: int) -> None:
         rect = pygame.Rect(cx - (panel_w // 2), cy - (panel_h // 2), panel_w, panel_h)
         draw_rounded_rect(surface, rect, (8, 34, 22), radius=16)
         pygame.draw.rect(surface, (30, 92, 62), rect, width=2, border_radius=16)
@@ -220,11 +221,32 @@ class TableScreen(Screen):
             label += " (Fold)"
         x_pad = max(10, int(panel_w * 0.05))
         line_h = self.ui.font_small.get_height()
-        y1 = rect.y + max(6, (panel_h - (2 * line_h)) // 3)
-        y2 = y1 + line_h
 
-        draw_text(surface, label, self.ui.font_small, (240, 240, 240), (rect.x + x_pad, y1))
-        draw_text(surface, f"Chips: {chips}", self.ui.font_small, (240, 240, 240), (rect.x + x_pad, y2))
+        lines = [label, f"Chips: {chips}"]
+        status = (status or "").strip()
+        if status:
+            lines.append(status)
+
+        total_h = len(lines) * line_h
+        y = rect.y + max(6, (panel_h - total_h) // 2)
+
+        for i, text in enumerate(lines):
+            draw_text(surface, text, self.ui.font_small, (240, 240, 240), (rect.x + x_pad, y + i * line_h))
+        
+    def _seat_status_text(self, seat: int) -> str:
+        # Turn / thinking
+        if self.table.hand_active and self.table.to_act_index == seat:
+            if seat == 0:
+                return "Your turn"
+            # CPU turn: show “Thinking…” while its timer is running (or until action fires)
+            if getattr(self.table, "_ai_timer", 0.0) > 0.0:
+                return "Thinking..."
+
+            # If timer not set yet, still show turn ownership
+            return "CPU turn"
+
+        # Last action (per-seat)
+        return self.table.last_actions.get(seat, "")
 
     def _seat_positions(self, table_rect: pygame.Rect, n: int, y_top: int, y_bottom: int) -> list[tuple[int, int]]:
         cx = table_rect.centerx
