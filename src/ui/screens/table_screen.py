@@ -2,7 +2,7 @@ from __future__ import annotations
 import pygame
 
 from src.ui.screens.base_screen import Screen
-from src.ui.widgets import Button, draw_rounded_rect, draw_text, draw_text_center, draw_card
+from src.ui.widgets import Button, Slider, draw_rounded_rect, draw_text, draw_text_center, draw_card
 from src.poker.table import PokerTable
 from src.poker.rules import Action
 
@@ -43,11 +43,21 @@ class TableScreen(Screen):
             on_click=lambda: self.table.human_action(Action.CHECK),
         )
 
+        # Raise slider (percentage of your stack used as your "put in" amount)
+        self.raise_slider = Slider(pygame.Rect(24, 236, 140, 18), value=0.5)
+
         self.btn_raise = Button(
-            pygame.Rect(24, 236, 140, 44),
+            pygame.Rect(24, 260, 140, 44),
             "Raise",
             self.ui.font_small,
             on_click=self._on_raise,
+        )
+
+        self.btn_all_in = Button(
+            pygame.Rect(24, 314, 140, 44),
+            "All In",
+            self.ui.font_small,
+            on_click=self._on_all_in,
         )
 
     def handle_event(self, event: pygame.event.Event) -> None:
@@ -56,6 +66,8 @@ class TableScreen(Screen):
         self.btn_fold.handle_event(event)
         self.btn_check.handle_event(event)
         self.btn_raise.handle_event(event)
+        self.raise_slider.handle_event(event)
+        self.btn_all_in.handle_event(event)
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_d:
                 self.show_debug = not self.show_debug
@@ -69,8 +81,42 @@ class TableScreen(Screen):
                 self._on_raise()
                 
     def _on_raise(self) -> None:
-        raise_to = self.table.current_bet_amount + max(1, self.table.bb_amount)
-        self.table.human_action(Action.RAISE, raise_to_total=raise_to)
+        you = self.table.players[0]
+        prev_bet = self.table.current_bets.get(0, 0)
+        to_call = self.table.to_call(0)
+
+        put_in = int(you.chips * self.raise_slider.value)
+        put_in = max(0, put_in)
+
+        # If slider is 0, default to a minimum raise attempt
+        if put_in == 0:
+            raise_to = self.table.current_bet_amount + max(1, self.table.bb_amount)
+            self.table.human_action(Action.RAISE, raise_to_total=raise_to)
+            return
+
+        target_total = prev_bet + max(put_in, to_call)
+
+        # If our target doesn't exceed the table bet, it's just a call
+        if target_total <= self.table.current_bet_amount:
+            self.table.human_action(Action.CALL)
+            return
+
+        self.table.human_action(Action.RAISE, raise_to_total=target_total)
+        
+    def _on_all_in(self) -> None:
+        you = self.table.players[0]
+        prev_bet = self.table.current_bets.get(0, 0)
+        to_call = self.table.to_call(0)
+
+        # All-in means "put in everything you can"
+        target_total = prev_bet + you.chips
+
+        # If we can't beat the current bet, it's an all-in call
+        if target_total <= self.table.current_bet_amount:
+            self.table.human_action(Action.CALL)
+            return
+
+        self.table.human_action(Action.RAISE, raise_to_total=target_total)
 
     def update(self, dt: float) -> None:
         self.table.update(dt)
@@ -83,6 +129,8 @@ class TableScreen(Screen):
         self.btn_fold.enabled = human_turn
         self.btn_check.enabled = human_turn
         self.btn_raise.enabled = human_turn
+        self.raise_slider.enabled = human_turn
+        self.btn_all_in.enabled = human_turn
 
         # Dynamic label: Check vs Call X
         if self.table.hand_active:
@@ -106,6 +154,13 @@ class TableScreen(Screen):
         self.btn_fold.draw(surface)
         self.btn_check.draw(surface)
         self.btn_raise.draw(surface)
+        
+        self.raise_slider.draw(surface)
+
+        # Slider label: "Bet N" where N is % of your current chips
+        you = self.table.players[0]
+        bet_amt = int(you.chips * self.raise_slider.value)
+        draw_text(surface, f"Bet {bet_amt}", self.ui.font_small, (245, 245, 245), (24, 216))
 
         # Content area (everything right of the sidebar)
         content_x = pad + sidebar_w + pad

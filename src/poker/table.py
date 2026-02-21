@@ -426,7 +426,14 @@ class PokerTable:
             return
 
         call_amt = self.to_call(seat)
-        action, raise_to = p.choose_action(to_call=call_amt, current_bet=self.current_bet_amount, big_blind=self.bb_amount)
+        action, raise_to = p.choose_action(
+            to_call=call_amt,
+            current_bet=self.current_bet_amount,
+            big_blind=self.bb_amount,
+            pot=self.pot,
+            hole=list(p.hand),
+            community=list(self.community),
+        )
         self.apply_action(seat, action, raise_to_total=raise_to)
 
     # ---------- Debug ----------

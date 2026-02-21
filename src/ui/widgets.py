@@ -60,6 +60,50 @@ class Button:
         draw_rounded_rect(surface, self.rect, bg, radius=12)
         pygame.draw.rect(surface, (210, 210, 210), self.rect, width=2, border_radius=12)
         draw_text_center(surface, self.text, self.font, (245, 245, 245), self.rect.center)
+        
+class Slider:
+    """
+    Simple horizontal slider, value in [0.0, 1.0]
+    """
+    def __init__(self, rect: pygame.Rect, *, value: float = 0.5) -> None:
+        self.rect = rect
+        self.value = max(0.0, min(1.0, value))
+        self.dragging = False
+        self.enabled = True
+
+    def handle_event(self, event: pygame.event.Event) -> None:
+        if not self.enabled:
+            return
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(event.pos):
+                self.dragging = True
+                self._set_from_x(event.pos[0])
+
+        elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            self.dragging = False
+
+        elif event.type == pygame.MOUSEMOTION and self.dragging:
+            self._set_from_x(event.pos[0])
+
+    def _set_from_x(self, x: int) -> None:
+        t = (x - self.rect.x) / max(1, self.rect.w)
+        self.value = max(0.0, min(1.0, t))
+
+    def draw(self, surface: pygame.Surface) -> None:
+        # Track
+        track = self.rect
+        bg = (35, 35, 35) if self.enabled else (90, 90, 90)
+        draw_rounded_rect(surface, track, bg, radius=10)
+        pygame.draw.rect(surface, (210, 210, 210), track, width=2, border_radius=10)
+
+        # Knob
+        knob_x = track.x + int(track.w * self.value)
+        knob = pygame.Rect(0, 0, max(10, track.h), max(10, track.h))
+        knob.center = (knob_x, track.centery)
+
+        draw_rounded_rect(surface, knob, (245, 245, 245), radius=10)
+        pygame.draw.rect(surface, (25, 25, 25), knob, width=2, border_radius=10)
 
 def draw_card(surface: pygame.Surface, rect: pygame.Rect, label: str, ui=None) -> None:
     draw_rounded_rect(surface, rect, (245, 245, 245), radius=12)
