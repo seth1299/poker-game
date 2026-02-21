@@ -219,7 +219,7 @@ class TableScreen(Screen):
         
         # --- Showdown overlay ---
         if (not self.table.hand_active) and self.table.showdown_summary:
-            self._draw_showdown_overlay(surface, table_rect, pad)
+            self._draw_showdown_overlay(surface, table_rect, playerbar, pad, card_w, card_h, gap)
 
         if self.show_debug:
             dbg = pygame.Rect(content_x, top_bar.bottom + pad, content_w, int(h * 0.10))
@@ -228,7 +228,16 @@ class TableScreen(Screen):
             draw_text(surface, self.table.debug_string(), self.ui.font_small, (245, 245, 245),
                     (dbg.x + pad, dbg.y + pad))
             
-    def _draw_showdown_overlay(self, surface: pygame.Surface, table_rect: pygame.Rect, pad: int) -> None:
+    def _draw_showdown_overlay(
+        self,
+        surface: pygame.Surface,
+        table_rect: pygame.Rect,
+        playerbar: pygame.Rect,
+        pad: int,
+        card_w: int,
+        card_h: int,
+        gap: int,
+    ) -> None:
         s = self.table.showdown_summary or {}
         rows = s.get("rows", [])
         winner = s.get("winner_name", "Unknown")
@@ -253,35 +262,59 @@ class TableScreen(Screen):
         draw_text(surface, self._truncate_to_width(title, self.ui.font_small, modal.w - pad * 2),
                   self.ui.font_small, (245, 245, 245), (modal.x + pad, modal.y + pad))
 
-        # List hands (You + AIs)
-        line_h = self.ui.font_small.get_height()
-        y = modal.y + pad + line_h + 6
+        # Draw each player's revealed hole cards UNDER their topbar box,
+        # with the evaluated hand text underneath the two cards.
+        n = len(self.table.players)
+        gap_bar = max(8, int(playerbar.w * 0.012))
+        box_w = (playerbar.w - (gap_bar * (n - 1))) // n
+        box_h = playerbar.h
 
-        for r in rows:
-            name = r.get("name", "")
-            seat = r.get("seat", 0)
-            folded = r.get("folded", False)
-            cards = " ".join(r.get("cards", [])) or "-- --"
-            desc = r.get("hand_desc", "N/A")
+        # Smaller card size for showdown reveal row
+        mini_w = max(22, int(card_w * 0.55))
+        mini_h = int(mini_w * 1.4)
+        mini_gap = max(6, int(gap * 0.55))
 
-            left = f"[{seat}] {name}" + (" (Folded)" if folded else "")
-            mid = f"{cards}"
-            right = f"{desc}"
+        # Vertical placement: below playerbar, above community cards area
+        cards_y = playerbar.bottom + max(6, int(pad * 0.6))
 
-            text = f"{left}  |  {mid}  |  {right}"
-            text = self._truncate_to_width(text, self.ui.font_small, modal.w - pad * 2)
+        # Make a quick lookup: seat -> row dict
+        row_by_seat = {int(r.get("seat", 0)): r for r in rows}
 
-            draw_text(surface, text, self.ui.font_small, (245, 245, 245), (modal.x + pad, y))
-            y += line_h
+        x = playerbar.x
+        for seat_idx in range(n):
+            r = row_by_seat.get(seat_idx, {})
+            cards = r.get("cards", []) or []
+            desc = (r.get("hand_desc", "N/A") or "").strip()
 
-            if y > modal.bottom - pad - line_h:
-                more = f"... ({len(rows)} players)"
-                draw_text(surface, more, self.ui.font_small, (245, 245, 245), (modal.x + pad, modal.bottom - pad - line_h))
-                break
+            # 2 cards centered under that player's box
+            total_cards_w = (mini_w * 2) + mini_gap
+            cx = x + (box_w // 2)
+            start_x = cx - (total_cards_w // 2)
+
+            for i in range(2):
+                cr = pygame.Rect(start_x + i * (mini_w + mini_gap), cards_y, mini_w, mini_h)
+                if i < len(cards):
+                    draw_card(surface, cr, cards[i], self.ui)
+                else:
+                    draw_rounded_rect(surface, cr, (15, 30, 55), radius=10)
+                    pygame.draw.rect(surface, (230, 230, 230), cr, width=2, border_radius=10)
+
+            # Evaluated hand text under the cards, bounded to the player's box width
+            max_w = box_w - (pad * 2)
+            desc_fit = self._truncate_to_width(desc, self.ui.font_small, max_w)
+            draw_text_center(
+                surface,
+                desc_fit,
+                self.ui.font_small,
+                (245, 245, 245),
+                (cx, cards_y + mini_h + max(10, int(pad * 0.55))),
+            )
+
+            x += box_w + gap_bar
 
         hint = "Press New Hand to continue"
         draw_text(surface, hint, self.ui.font_small, (245, 245, 245),
-                  (modal.x + pad, modal.bottom - pad - line_h))
+                  (modal.x + pad, modal.bottom - pad - self.ui.font_small.get_height()))
 
     def _truncate_to_width(self, text: str, font: pygame.font.Font, max_w: int) -> str:
         text = (text or "").strip()

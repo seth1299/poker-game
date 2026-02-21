@@ -8,6 +8,9 @@ from src.poker.card import Card, RANKS
 from src.poker.rules import HandRank, HAND_RANK_NAME
 
 _RANK_TO_VAL = {r: i + 2 for i, r in enumerate(RANKS)}  # 2..14
+_VAL_TO_RANK = {v: r for r, v in _RANK_TO_VAL.items()}
+def _r(v: int) -> str:
+    return _VAL_TO_RANK.get(v, str(v))
 
 
 def _is_straight(vals_desc: list[int]) -> tuple[bool, int]:
@@ -60,7 +63,7 @@ def _score_5(cards: list[Card]) -> tuple[HandRank, tuple[int, ...], str]:
         kicker = max(v for v in vals if v != quad)
         hr = HandRank.FOUR_OF_A_KIND
         tb = (quad, kicker)
-        desc = f"{HAND_RANK_NAME[hr]} ({quad}s)"
+        desc = f"{HAND_RANK_NAME[hr]} ({_r(quad)}s, with a {_r(kicker)} kicker.)"
         return (hr, tb, desc)
 
     # Full House
@@ -76,7 +79,7 @@ def _score_5(cards: list[Card]) -> tuple[HandRank, tuple[int, ...], str]:
     if is_flush:
         hr = HandRank.FLUSH
         tb = tuple(vals)
-        desc = f"{HAND_RANK_NAME[hr]} ({vals[0]}-high)"
+        desc = f"{HAND_RANK_NAME[hr]} ({' '.join(_r(v) for v in vals)})"
         return (hr, tb, desc)
 
     # Straight
@@ -92,7 +95,7 @@ def _score_5(cards: list[Card]) -> tuple[HandRank, tuple[int, ...], str]:
         kickers = sorted((v for v in vals if v != trips), reverse=True)[:2]
         hr = HandRank.THREE_OF_A_KIND
         tb = (trips, *kickers)
-        desc = f"{HAND_RANK_NAME[hr]} ({trips}s)"
+        desc = f"{HAND_RANK_NAME[hr]} ({_r(trips)}s, with {' '.join(_r(v) for v in kickers)} kickers.)"
         return (hr, tb, desc)
 
     # Two Pair
@@ -102,7 +105,7 @@ def _score_5(cards: list[Card]) -> tuple[HandRank, tuple[int, ...], str]:
         kicker = max(v for v in vals if v != pair_hi and v != pair_lo)
         hr = HandRank.TWO_PAIR
         tb = (pair_hi, pair_lo, kicker)
-        desc = f"{HAND_RANK_NAME[hr]} ({pair_hi}s and {pair_lo}s)"
+        desc = f"{HAND_RANK_NAME[hr]} ({_r(pair_hi)}s and {_r(pair_lo)}s, with a {_r(kicker)} kicker.)"
         return (hr, tb, desc)
 
     # One Pair
@@ -111,13 +114,13 @@ def _score_5(cards: list[Card]) -> tuple[HandRank, tuple[int, ...], str]:
         kickers = sorted((v for v in vals if v != pair), reverse=True)[:3]
         hr = HandRank.ONE_PAIR
         tb = (pair, *kickers)
-        desc = f"{HAND_RANK_NAME[hr]} ({pair}s)"
+        desc = f"{HAND_RANK_NAME[hr]} ({_r(pair)}s, with {' '.join(_r(v) for v in kickers)} kickers.)"
         return (hr, tb, desc)
 
     # High Card
     hr = HandRank.HIGH_CARD
     tb = tuple(vals)
-    desc = f"{HAND_RANK_NAME[hr]} ({vals[0]}-high)"
+    desc = f"{HAND_RANK_NAME[hr]} ({' '.join(_r(v) for v in vals)})"
     return (hr, tb, desc)
 
 
