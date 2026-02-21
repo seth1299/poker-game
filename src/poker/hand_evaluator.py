@@ -1,0 +1,1 @@
+# TODO: Make a class that evaluates a given hand in comparison to the community cards, automatically determining the highest value combination.

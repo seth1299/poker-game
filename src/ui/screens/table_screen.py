@@ -4,15 +4,14 @@ import pygame
 from src.ui.screens.base_screen import Screen
 from src.ui.widgets import Button, draw_rounded_rect, draw_text, draw_text_center, draw_card
 from src.poker.table import PokerTable
-
+from src.poker.rules import Action
 
 class TableScreen(Screen):
-    def __init__(self, ui, on_back):
+    def __init__(self, ui, table: PokerTable, on_back):
         super().__init__()
         self.ui = ui
         self.on_back = on_back
-
-        self.table = PokerTable()
+        self.table = table
 
         self.show_debug = False
 
@@ -29,17 +28,68 @@ class TableScreen(Screen):
             self.ui.font_small,
             on_click=self.table.start_new_hand,
         )
+        
+        self.btn_fold = Button(
+            pygame.Rect(24, 128, 140, 44),
+            "Fold",
+            self.ui.font_small,
+            on_click=lambda: self.table.human_action(Action.FOLD),
+        )
+
+        self.btn_check = Button(
+            pygame.Rect(24, 182, 140, 44),
+            "Check",
+            self.ui.font_small,
+            on_click=lambda: self.table.human_action(Action.CHECK),
+        )
+
+        self.btn_raise = Button(
+            pygame.Rect(24, 236, 140, 44),
+            "Raise",
+            self.ui.font_small,
+            on_click=self._on_raise,
+        )
 
     def handle_event(self, event: pygame.event.Event) -> None:
         self.btn_back.handle_event(event)
         self.btn_deal.handle_event(event)
-
+        self.btn_fold.handle_event(event)
+        self.btn_check.handle_event(event)
+        self.btn_raise.handle_event(event)
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_d:
                 self.show_debug = not self.show_debug
+            elif event.key == pygame.K_n:
+                self.table.start_new_hand()
+            elif event.key == pygame.K_f:
+                self.table.human_action(Action.FOLD)
+            elif event.key == pygame.K_c:
+                self.table.human_action(Action.CHECK)
+            elif event.key == pygame.K_r:
+                self._on_raise()
+                
+    def _on_raise(self) -> None:
+        raise_to = self.table.current_bet_amount + max(1, self.table.bb_amount)
+        self.table.human_action(Action.RAISE, raise_to_total=raise_to)
 
     def update(self, dt: float) -> None:
         self.table.update(dt)
+
+        # Disable "New Hand" mid-hand
+        self.btn_deal.enabled = not self.table.hand_active
+
+        # Only allow action buttons on the human's turn
+        human_turn = self.table.human_can_act()
+        self.btn_fold.enabled = human_turn
+        self.btn_check.enabled = human_turn
+        self.btn_raise.enabled = human_turn
+
+        # Dynamic label: Check vs Call X
+        if self.table.hand_active:
+            to_call = self.table.to_call(0)
+            self.btn_check.text = f"Call {to_call}" if to_call > 0 else "Check"
+        else:
+            self.btn_check.text = "Check"
 
     def draw(self, surface: pygame.Surface) -> None:
         w, h = surface.get_size()
@@ -53,6 +103,9 @@ class TableScreen(Screen):
         # (optional: you can also reposition buttons using these values later)
         self.btn_back.draw(surface)
         self.btn_deal.draw(surface)
+        self.btn_fold.draw(surface)
+        self.btn_check.draw(surface)
+        self.btn_raise.draw(surface)
 
         # Content area (everything right of the sidebar)
         content_x = pad + sidebar_w + pad

@@ -6,11 +6,11 @@ from src.ui.widgets import Button
 from src.ui.screens.table_screen import TableScreen
 
 class MainMenuScreen(Screen):
-    def __init__(self, ui, on_quit):
+    def __init__(self, ui, table, on_quit):
         super().__init__()
         self.ui = ui
         self.on_quit = on_quit
-
+        self.table = table
         self.title = self.ui.font_large.render("Poker", True, self.ui.colors["white"])
 
         self.btn_play = Button(
@@ -28,12 +28,12 @@ class MainMenuScreen(Screen):
 
     def _start_game(self) -> None:
         self.request_screen_change(
-            TableScreen(self.ui, on_back=self._back_to_menu)
+            TableScreen(self.ui, table=self.table, on_back=self._back_to_menu)
         )
 
     def _back_to_menu(self) -> None:
         self.request_screen_change(
-            MainMenuScreen(self.ui, on_quit=self.on_quit)
+            MainMenuScreen(self.ui, table=self.table, on_quit=self.on_quit)
         )
 
     def handle_event(self, event: pygame.event.Event) -> None:
