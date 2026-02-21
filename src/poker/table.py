@@ -361,16 +361,20 @@ class PokerTable:
                 hr, tb, desc = best_of_7(seven)
             else:
                 # if somehow incomplete, treat as lowest
-                hr, tb, desc = (0, (), "N/A")  # type: ignore[assignment]
+                from src.poker.rules import HandRank
+                hr, tb, desc = (HandRank.HIGH_CARD, (), "N/A")
 
             best_by_seat[i] = (hr, tb, desc)
+            from src.poker.rules import HAND_RANK_NAME  # add at top of method, or keep here
+
             rows.append(
                 {
                     "seat": i,
                     "name": p.name,
                     "folded": p.folded,
                     "cards": [c.short_name() for c in p.hand],
-                    "hand_desc": desc,
+                    "hand_name": HAND_RANK_NAME[hr],
+                    "hand_desc": desc,  # full detail (kickers, ordering, etc.)
                     "rank": int(hr) if isinstance(hr, int) else 0,
                 }
             )

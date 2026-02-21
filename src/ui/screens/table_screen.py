@@ -112,6 +112,8 @@ class TableScreen(Screen):
         content_w = w - content_x - pad
 
         top_bar = pygame.Rect(content_x, pad, content_w, topbar_h)
+        
+        showdown_active = (not self.table.hand_active) and bool(self.table.showdown_summary)
 
         table_rect = pygame.Rect(
             content_x,
@@ -135,7 +137,20 @@ class TableScreen(Screen):
         playerbar = pygame.Rect(table_rect.x + pad, table_rect.y + pad, table_rect.w - (pad * 2), playerbar_h)
 
         # Community row starts below the player bar
+                # Mini hole cards sit directly under each player box during showdown.
+        # So: reserve vertical space and push the community cards DOWN.
         community_y = playerbar.bottom + pad
+
+        if showdown_active:
+            n = len(self.table.players)
+            gap_bar = max(8, int(playerbar.w * 0.012))
+            box_w = (playerbar.w - (gap_bar * (n - 1))) // n
+
+            mini_w, mini_h, _mini_gap = self._showdown_mini_sizes(card_w, gap, box_w, pad)
+            label_h = self.ui.font_small.get_height()
+
+            # Space for: mini cards + label + padding
+            community_y += mini_h + label_h + pad
 
         hint_y = table_rect.bottom - pad - (self.ui.font_small.get_height() // 2)
         hole_y = hint_y - pad - card_h
@@ -196,30 +211,33 @@ class TableScreen(Screen):
             self._draw_player_panel_rect(surface, r, seat_idx, p.name, p.chips, p.folded, status)
 
             x += box_w + gap_bar
-
-        # --- Hole cards (seat 0) ---
-        you = self.table.players[0]
-        hole = you.hand
+            
+        showdown_active = (not self.table.hand_active) and bool(self.table.showdown_summary)
         
-        # --- Hole cards (seat 0) ---
-        hole_total_w = (card_w * 2) + gap
-        hole_start_x = table_rect.centerx - hole_total_w // 2
+        if not showdown_active:
+            # --- Hole cards (seat 0) ---
+            you = self.table.players[0]
+            hole = you.hand
+            
+            # --- Hole cards (seat 0) ---
+            hole_total_w = (card_w * 2) + gap
+            hole_start_x = table_rect.centerx - hole_total_w // 2
 
-        for i in range(2):
-            rect = pygame.Rect(hole_start_x + i * (card_w + gap), hole_y, card_w, card_h)
+            for i in range(2):
+                rect = pygame.Rect(hole_start_x + i * (card_w + gap), hole_y, card_w, card_h)
 
-            if i < len(hole):
-                draw_card(surface, rect, hole[i].short_name(), self.ui)
-            else:
-                draw_rounded_rect(surface, rect, (15, 30, 55), radius=12)
-                pygame.draw.rect(surface, (230, 230, 230), rect, width=2, border_radius=12)
+                if i < len(hole):
+                    draw_card(surface, rect, hole[i].short_name(), self.ui)
+                else:
+                    draw_rounded_rect(surface, rect, (15, 30, 55), radius=12)
+                    pygame.draw.rect(surface, (230, 230, 230), rect, width=2, border_radius=12)
 
         draw_text_center(surface, "Press D to toggle debug", self.ui.font_small, (220, 220, 220),
             (table_rect.centerx, hint_y))
         
         # --- Showdown overlay ---
-        if (not self.table.hand_active) and self.table.showdown_summary:
-            self._draw_showdown_overlay(surface, table_rect, playerbar, pad, card_w, card_h, gap)
+        if showdown_active:
+            self._draw_showdown_overlay(surface, table_rect, playerbar, pad, card_w, card_h, gap, community_y)
 
         if self.show_debug:
             dbg = pygame.Rect(content_x, top_bar.bottom + pad, content_w, int(h * 0.10))
@@ -237,6 +255,7 @@ class TableScreen(Screen):
         card_w: int,
         card_h: int,
         gap: int,
+        community_y: int,
     ) -> None:
         s = self.table.showdown_summary or {}
         rows = s.get("rows", [])
@@ -244,16 +263,21 @@ class TableScreen(Screen):
         winner_desc = s.get("winner_desc", "N/A")
         pot = s.get("pot", 0)
 
-        # Dark overlay
-        overlay = pygame.Surface((table_rect.w, table_rect.h), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 140))
-        surface.blit(overlay, (table_rect.x, table_rect.y))
+        # Compact result banner (not a giant modal)
+        mw = int(table_rect.w * 0.72)
+        line_h = self.ui.font_small.get_height()
+        mh = (pad * 2) + (line_h * 2)  # title + hint
 
-        # Modal panel
-        mw = int(table_rect.w * 0.82)
-        mh = int(table_rect.h * 0.62)
         modal = pygame.Rect(0, 0, mw, mh)
-        modal.center = table_rect.center
+
+        # Place it BELOW the showdown mini-cards row, without covering community cards too much.
+        modal.centerx = table_rect.centerx
+        # Place banner under the community cards row (community_y is lowered during showdown)
+        modal.top = community_y + card_h + pad
+
+        # Safety clamp (stay inside table)
+        if modal.bottom > table_rect.bottom - pad:
+            modal.bottom = table_rect.bottom - pad
 
         draw_rounded_rect(surface, modal, (10, 40, 26), radius=20)
         pygame.draw.rect(surface, (230, 230, 230), modal, width=2, border_radius=20)
@@ -269,10 +293,10 @@ class TableScreen(Screen):
         box_w = (playerbar.w - (gap_bar * (n - 1))) // n
         box_h = playerbar.h
 
-        # Smaller card size for showdown reveal row
-        mini_w = max(22, int(card_w * 0.55))
-        mini_h = int(mini_w * 1.4)
-        mini_gap = max(6, int(gap * 0.55))
+        # Showdown reveal row: make cards bigger, but clamp so 2 cards always fit within the player box.
+        max_pair_w = box_w - (pad * 2)
+        mini_gap = max(6, int(gap * 0.60))
+        mini_w, mini_h, mini_gap = self._showdown_mini_sizes(card_w, gap, box_w, pad)
 
         # Vertical placement: below playerbar, above community cards area
         cards_y = playerbar.bottom + max(6, int(pad * 0.6))
@@ -284,7 +308,7 @@ class TableScreen(Screen):
         for seat_idx in range(n):
             r = row_by_seat.get(seat_idx, {})
             cards = r.get("cards", []) or []
-            desc = (r.get("hand_desc", "N/A") or "").strip()
+            desc = (r.get("hand_name", "N/A") or "").strip()
 
             # 2 cards centered under that player's box
             total_cards_w = (mini_w * 2) + mini_gap
@@ -314,7 +338,16 @@ class TableScreen(Screen):
 
         hint = "Press New Hand to continue"
         draw_text(surface, hint, self.ui.font_small, (245, 245, 245),
-                  (modal.x + pad, modal.bottom - pad - self.ui.font_small.get_height()))
+                  (modal.x + pad, modal.y + pad + line_h))
+        
+    def _showdown_mini_sizes(self, card_w: int, gap: int, box_w: int, pad: int) -> tuple[int, int, int]:
+        # Bigger mini cards, clamped so two always fit under the box
+        max_pair_w = box_w - (pad * 2)
+        mini_gap = max(6, int(gap * 0.60))
+        mini_w = min(int(card_w * 0.70), int((max_pair_w - mini_gap) / 2))
+        mini_w = max(26, mini_w)
+        mini_h = int(mini_w * 1.4)
+        return mini_w, mini_h, mini_gap
 
     def _truncate_to_width(self, text: str, font: pygame.font.Font, max_w: int) -> str:
         text = (text or "").strip()
