@@ -57,6 +57,9 @@ class PokerTable:
         # Optional: helpful for UI/debug
         self.last_action_text: str = ""
         self.last_actions: Dict[int, str] = {}  # seat_index -> short action string for UI
+        
+        # Showdown / results (for UI)
+        self.showdown_summary: dict | None = None
 
         self._rng = random.Random()
 
@@ -111,6 +114,7 @@ class PokerTable:
         self._ai_timer = 0.0
         self.last_action_text = ""
         self.last_actions.clear()
+        self.showdown_summary = None
 
     # ---------- Position helpers ----------
 
@@ -345,9 +349,51 @@ class PokerTable:
         self.pending_to_act.clear()
 
     def _showdown_placeholder(self) -> None:
-        # TODO: plug in real hand evaluator when hand_evaluator.py is implemented
-        alive = self.active_seats()
-        winner_seat = alive[0] if alive else 0
+        from src.poker.hand_evaluator import best_of_7
+
+        # Reveal/evaluate ALL players (including folded), as requested
+        rows: list[dict] = []
+        best_by_seat: dict[int, tuple] = {}
+
+        for i, p in enumerate(self.players):
+            seven = list(p.hand) + list(self.community)
+            if len(p.hand) == 2 and len(self.community) >= 3:
+                hr, tb, desc = best_of_7(seven)
+            else:
+                # if somehow incomplete, treat as lowest
+                hr, tb, desc = (0, (), "N/A")  # type: ignore[assignment]
+
+            best_by_seat[i] = (hr, tb, desc)
+            rows.append(
+                {
+                    "seat": i,
+                    "name": p.name,
+                    "folded": p.folded,
+                    "cards": [c.short_name() for c in p.hand],
+                    "hand_desc": desc,
+                    "rank": int(hr) if isinstance(hr, int) else 0,
+                }
+            )
+
+        # Winner is best among NON-folded seats
+        contenders = [i for i, p in enumerate(self.players) if not p.folded]
+        if not contenders:
+            winner_seat = 0
+            winner_desc = "N/A"
+        else:
+            winner_seat = max(contenders, key=lambda s: (best_by_seat[s][0], best_by_seat[s][1]))
+            winner_desc = best_by_seat[winner_seat][2]
+
+        winner_name = self.players[winner_seat].name
+        self.showdown_summary = {
+            "winner_seat": winner_seat,
+            "winner_name": winner_name,
+            "winner_desc": winner_desc,
+            "rows": rows,
+            "pot": self.pot,
+        }
+
+        # Award pot after capturing summary
         self._award_pot(winner_seat)
 
     # ---------- Pygame loop integration ----------

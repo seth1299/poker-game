@@ -50,12 +50,12 @@ class Button:
                 self.on_click()
 
     def draw(self, surface: pygame.Surface) -> None:
-        # Clean, less “placeholder”
-        bg = (52, 52, 52)
+        # Enabled should look clickable; disabled should look greyed-out
+        bg = (35, 35, 35)          # enabled (dark)
         if not self.enabled:
-            bg = (35, 35, 35)
+            bg = (90, 90, 90)      # disabled (greyed out)
         elif self.hovered:
-            bg = (72, 72, 72)
+            bg = (55, 55, 55)      # hover (slightly lighter)
 
         draw_rounded_rect(surface, self.rect, bg, radius=12)
         pygame.draw.rect(surface, (210, 210, 210), self.rect, width=2, border_radius=12)

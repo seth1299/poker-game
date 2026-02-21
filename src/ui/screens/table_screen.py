@@ -130,8 +130,12 @@ class TableScreen(Screen):
         panel_w = int(card_w * 2.6)
         panel_h = int(card_h * 0.45)
 
-        # Anchor rows so they can't collide
-        community_y = table_rect.y + int(table_rect.h * 0.18)
+        # --- Player topbar row (You, AI-1..AI-4) ---
+        playerbar_h = max(int(table_rect.h * 0.18), self.ui.font_small.get_height() * 4)
+        playerbar = pygame.Rect(table_rect.x + pad, table_rect.y + pad, table_rect.w - (pad * 2), playerbar_h)
+
+        # Community row starts below the player bar
+        community_y = playerbar.bottom + pad
 
         hint_y = table_rect.bottom - pad - (self.ui.font_small.get_height() // 2)
         hole_y = hint_y - pad - card_h
@@ -177,12 +181,21 @@ class TableScreen(Screen):
                 draw_rounded_rect(surface, rect, (15, 30, 55), radius=12)
                 pygame.draw.rect(surface, (230, 230, 230), rect, width=2, border_radius=12)
 
-        # --- Player seats ---
-        seat_positions = self._seat_positions(table_rect, len(self.table.players), y_top, y_bottom)
-        for seat_idx, (cx, cy) in enumerate(seat_positions):
+        # --- Player topbar (uniform row) ---
+        n = len(self.table.players)
+        gap_bar = max(8, int(playerbar.w * 0.012))
+        box_w = (playerbar.w - (gap_bar * (n - 1))) // n
+        box_h = playerbar.h
+
+        x = playerbar.x
+        for seat_idx in range(n):
             p = self.table.players[seat_idx]
             status = self._seat_status_text(seat_idx)
-            self._draw_player_panel(surface, seat_idx, p.name, p.chips, p.folded, status, cx, cy, panel_w, panel_h)
+
+            r = pygame.Rect(x, playerbar.y, box_w, box_h)
+            self._draw_player_panel_rect(surface, r, seat_idx, p.name, p.chips, p.folded, status)
+
+            x += box_w + gap_bar
 
         # --- Hole cards (seat 0) ---
         you = self.table.players[0]
@@ -203,6 +216,10 @@ class TableScreen(Screen):
 
         draw_text_center(surface, "Press D to toggle debug", self.ui.font_small, (220, 220, 220),
             (table_rect.centerx, hint_y))
+        
+        # --- Showdown overlay ---
+        if (not self.table.hand_active) and self.table.showdown_summary:
+            self._draw_showdown_overlay(surface, table_rect, pad)
 
         if self.show_debug:
             dbg = pygame.Rect(content_x, top_bar.bottom + pad, content_w, int(h * 0.10))
@@ -210,7 +227,130 @@ class TableScreen(Screen):
             pygame.draw.rect(surface, (220, 220, 220), dbg, width=1, border_radius=16)
             draw_text(surface, self.table.debug_string(), self.ui.font_small, (245, 245, 245),
                     (dbg.x + pad, dbg.y + pad))
+            
+    def _draw_showdown_overlay(self, surface: pygame.Surface, table_rect: pygame.Rect, pad: int) -> None:
+        s = self.table.showdown_summary or {}
+        rows = s.get("rows", [])
+        winner = s.get("winner_name", "Unknown")
+        winner_desc = s.get("winner_desc", "N/A")
+        pot = s.get("pot", 0)
 
+        # Dark overlay
+        overlay = pygame.Surface((table_rect.w, table_rect.h), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 140))
+        surface.blit(overlay, (table_rect.x, table_rect.y))
+
+        # Modal panel
+        mw = int(table_rect.w * 0.82)
+        mh = int(table_rect.h * 0.62)
+        modal = pygame.Rect(0, 0, mw, mh)
+        modal.center = table_rect.center
+
+        draw_rounded_rect(surface, modal, (10, 40, 26), radius=20)
+        pygame.draw.rect(surface, (230, 230, 230), modal, width=2, border_radius=20)
+
+        title = f"Result: {winner} wins ({winner_desc}) | Pot {pot}"
+        draw_text(surface, self._truncate_to_width(title, self.ui.font_small, modal.w - pad * 2),
+                  self.ui.font_small, (245, 245, 245), (modal.x + pad, modal.y + pad))
+
+        # List hands (You + AIs)
+        line_h = self.ui.font_small.get_height()
+        y = modal.y + pad + line_h + 6
+
+        for r in rows:
+            name = r.get("name", "")
+            seat = r.get("seat", 0)
+            folded = r.get("folded", False)
+            cards = " ".join(r.get("cards", [])) or "-- --"
+            desc = r.get("hand_desc", "N/A")
+
+            left = f"[{seat}] {name}" + (" (Folded)" if folded else "")
+            mid = f"{cards}"
+            right = f"{desc}"
+
+            text = f"{left}  |  {mid}  |  {right}"
+            text = self._truncate_to_width(text, self.ui.font_small, modal.w - pad * 2)
+
+            draw_text(surface, text, self.ui.font_small, (245, 245, 245), (modal.x + pad, y))
+            y += line_h
+
+            if y > modal.bottom - pad - line_h:
+                more = f"... ({len(rows)} players)"
+                draw_text(surface, more, self.ui.font_small, (245, 245, 245), (modal.x + pad, modal.bottom - pad - line_h))
+                break
+
+        hint = "Press New Hand to continue"
+        draw_text(surface, hint, self.ui.font_small, (245, 245, 245),
+                  (modal.x + pad, modal.bottom - pad - line_h))
+
+    def _truncate_to_width(self, text: str, font: pygame.font.Font, max_w: int) -> str:
+        text = (text or "").strip()
+        if max_w <= 0 or not text:
+            return ""
+
+        if font.size(text)[0] <= max_w:
+            return text
+
+        ell = "..."
+        # leave room for ellipsis
+        max_w2 = max(0, max_w - font.size(ell)[0])
+        if max_w2 <= 0:
+            return ell
+
+        lo, hi = 0, len(text)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if font.size(text[:mid])[0] <= max_w2:
+                lo = mid + 1
+            else:
+                hi = mid
+        cut = max(0, lo - 1)
+        return text[:cut] + ell
+
+    def _draw_player_panel_rect(
+        self,
+        surface: pygame.Surface,
+        rect: pygame.Rect,
+        seat: int,
+        name: str,
+        chips: int,
+        folded: bool,
+        status: str,
+    ) -> None:
+        draw_rounded_rect(surface, rect, (8, 34, 22), radius=16)
+        pygame.draw.rect(surface, (30, 92, 62), rect, width=2, border_radius=16)
+
+        label = f"[{seat}] {name}"
+
+        # Blind badges (current hand)
+        if self.table.hand_number > 0:
+            if seat == self.table.small_blind_index():
+                label += " [SB]"
+            if seat == self.table.big_blind_index:
+                label += " [BB]"
+
+        if folded:
+            label += " (Fold)"
+
+        x_pad = max(10, int(rect.w * 0.05))
+        y_pad = max(8, int(rect.h * 0.18))
+        line_h = self.ui.font_small.get_height()
+        max_text_w = max(0, rect.w - (x_pad * 2))
+
+        lines = [label, f"Chips: {chips}"]
+        status = (status or "").strip()
+        if status:
+            lines.append(status)
+
+        # If height is tight, drop the 3rd line first
+        max_lines = max(1, (rect.h - (y_pad * 2)) // max(1, line_h))
+        lines = lines[:max_lines]
+
+        y = rect.y + y_pad
+        for i, t in enumerate(lines):
+            t_fit = self._truncate_to_width(t, self.ui.font_small, max_text_w)
+            draw_text(surface, t_fit, self.ui.font_small, (240, 240, 240), (rect.x + x_pad, y + i * line_h))
+    
     def _draw_player_panel(self, surface: pygame.Surface, seat: int, name: str, chips: int, folded: bool, status: str, cx: int, cy: int, panel_w: int, panel_h: int) -> None:
         rect = pygame.Rect(cx - (panel_w // 2), cy - (panel_h // 2), panel_w, panel_h)
         draw_rounded_rect(surface, rect, (8, 34, 22), radius=16)
