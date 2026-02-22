@@ -80,21 +80,38 @@ class TableScreen(Screen):
             elif event.key == pygame.K_r:
                 self._on_raise()
                 
+    def round_to_nearest_ten(self, number) -> int:
+        try:
+            original_num = int(number)
+            num = int(number)
+            while num % 10 != 0:
+                num += 1
+                if num > original_num:
+                    num = original_num
+                    break
+        except Exception as e:
+            print(f"Error while rounding to nearest ten: {e}")
+        finally:
+            return num
+            
+            
+                
     def _on_raise(self) -> None:
         you = self.table.players[0]
         prev_bet = self.table.current_bets.get(0, 0)
         to_call = self.table.to_call(0)
 
-        put_in = int(you.chips * self.raise_slider.value)
+        put_in = int(you.chips * self.round_to_nearest_ten(self.raise_slider.value))
         put_in = max(0, put_in)
 
         # If slider is 0, default to a minimum raise attempt
         if put_in == 0:
             raise_to = self.table.current_bet_amount + max(1, self.table.bb_amount)
+            raise_to = self.round_to_nearest_ten(raise_to)
             self.table.human_action(Action.RAISE, raise_to_total=raise_to)
             return
 
-        target_total = prev_bet + max(put_in, to_call)
+        target_total = self.round_to_nearest_ten(prev_bet + max(put_in, to_call))
 
         # If our target doesn't exceed the table bet, it's just a call
         if target_total <= self.table.current_bet_amount:
@@ -154,13 +171,14 @@ class TableScreen(Screen):
         self.btn_fold.draw(surface)
         self.btn_check.draw(surface)
         self.btn_raise.draw(surface)
-        
+        self.btn_all_in.draw(surface)
         self.raise_slider.draw(surface)
 
         # Slider label: "Bet N" where N is % of your current chips
         you = self.table.players[0]
-        bet_amt = int(you.chips * self.raise_slider.value)
-        draw_text(surface, f"Bet {bet_amt}", self.ui.font_small, (245, 245, 245), (24, 216))
+        bet_amt = self.round_to_nearest_ten(int(you.chips * self.raise_slider.value))
+        label_y = self.raise_slider.rect.y - self.ui.font_small.get_height() - 4
+        draw_text(surface, f"Bet {bet_amt}", self.ui.font_small, (245, 245, 245), (24, label_y))
 
         # Content area (everything right of the sidebar)
         content_x = pad + sidebar_w + pad

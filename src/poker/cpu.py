@@ -121,6 +121,8 @@ class CPUPlayer(Player):
         if self.chips > to_call + big_blind and strength > 0.62 and self._rng.random() < (0.22 * raise_bias):
             # Raise sizing scales with strength; table.py will clamp to all-in if needed
             bump = int(big_blind * (2 + strength * 4))
+            while bump % 10 != 0:
+                bump += 1
             return (Action.RAISE, current_bet + max(big_blind, bump))
 
         return (Action.CALL, None)
