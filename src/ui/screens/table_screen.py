@@ -80,19 +80,9 @@ class TableScreen(Screen):
             elif event.key == pygame.K_r:
                 self._on_raise()
                 
-    def round_to_nearest_ten(self, number) -> int:
-        try:
-            original_num = int(number)
-            num = int(number)
-            while num % 10 != 0:
-                num += 1
-                if num > original_num:
-                    num = original_num
-                    break
-        except Exception as e:
-            print(f"Error while rounding to nearest ten: {e}")
-        finally:
-            return num
+    def round_to_nearest_ten(self, number: int) -> int:
+        number = int(number)
+        return (number // 10) * 10
             
             
                 
@@ -101,7 +91,8 @@ class TableScreen(Screen):
         prev_bet = self.table.current_bets.get(0, 0)
         to_call = self.table.to_call(0)
 
-        put_in = int(you.chips * self.round_to_nearest_ten(self.raise_slider.value))
+        raw_put_in = int(you.chips * self.raise_slider.value)
+        put_in = self.round_to_nearest_ten(raw_put_in)
         put_in = max(0, put_in)
 
         # If slider is 0, default to a minimum raise attempt
